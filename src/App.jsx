@@ -129,9 +129,16 @@ const CustomTooltip = ({ active, payload }) => {
   )
 }
 
-// ─── Add Expense Modal ────────────────────────────────────────────────────────
-function AddModal({ onClose, onAdd }) {
-  const [form, setForm]     = useState({ date: today(), category: 'Groceries & Snacks', sub: '', amount: '', note: '' })
+// ─── Expense Modal ────────────────────────────────────────────────────────────
+function ExpenseModal({ expense, onClose, onSave }) {
+  const isEditing = Boolean(expense)
+  const [form, setForm]     = useState({
+    date: expense?.date || today(),
+    category: expense?.category || 'Groceries & Snacks',
+    sub: expense?.sub || '',
+    amount: expense?.amount ? String(expense.amount) : '',
+    note: expense?.note || '',
+  })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState('')
   const subs = CATEGORIES[form.category]?.subs || []
@@ -150,7 +157,13 @@ function AddModal({ onClose, onAdd }) {
     }
     setSaving(true)
     try {
-      await onAdd({ ...form, amount: parseFloat(form.amount) })
+      await onSave({
+        date: form.date,
+        category: form.category,
+        sub: form.sub,
+        amount: parseFloat(form.amount),
+        note: form.note.trim(),
+      })
       onClose()
     } catch (e) {
       setError(e.message || 'Could not save expense.')
@@ -163,7 +176,7 @@ function AddModal({ onClose, onAdd }) {
     <div style={styles.overlay} onClick={e => e.target === e.currentTarget && onClose()}>
       <div style={styles.modal} className="fade-in">
         <div style={styles.modalHeader}>
-          <span style={styles.modalTitle}>Log Expense</span>
+          <span style={styles.modalTitle}>{isEditing ? 'Edit Expense' : 'Log Expense'}</span>
           <button className="btn-ghost" onClick={onClose} style={{ padding: '4px 10px' }}>✕</button>
         </div>
         <div style={styles.grid2}>
@@ -200,7 +213,7 @@ function AddModal({ onClose, onAdd }) {
         {error && <p style={{ color: 'var(--red)', fontSize: 12 }}>{error}</p>}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
           <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving...' : 'Add Expense'}</button>
+          <button className="btn-primary" onClick={submit} disabled={saving}>{saving ? 'Saving...' : isEditing ? 'Save Changes' : 'Add Expense'}</button>
         </div>
       </div>
     </div>
@@ -297,7 +310,7 @@ function Dashboard({ expenses }) {
             <div style={styles.table}>
               <div style={styles.tableHead}><span>Category</span><span style={{ textAlign: 'right' }}>Amount</span><span style={{ textAlign: 'right' }}>% of total</span></div>
               {byCategory.map(d => (
-                <div key={d.name} style={styles.tableRow} className="expense-table-row">
+                <div key={d.name} style={styles.tableRow} className="table-row-hover">
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: CATEGORIES[d.name]?.color, flexShrink: 0 }} />
                     {d.name}
@@ -321,7 +334,7 @@ function Dashboard({ expenses }) {
 }
 
 // ─── Expense List ─────────────────────────────────────────────────────────────
-function ExpenseList({ expenses, onDelete }) {
+function ExpenseList({ expenses, onEdit, onDelete }) {
   const [filterCat,   setFilterCat]   = useState('All')
   const [filterMonth, setFilterMonth] = useState(-1)
   const [filterYear,  setFilterYear]  = useState(-1)
@@ -362,12 +375,12 @@ function ExpenseList({ expenses, onDelete }) {
         <div style={styles.empty}><span style={{ fontSize: 32 }}>🗒️</span><p>No expenses match your filters</p></div>
       ) : (
         <div style={styles.table}>
-          <div className="expense-table-head" style={{ ...styles.tableHead, gridTemplateColumns: '100px 1fr 1fr 90px 80px' }}>
+          <div className="expense-table-head" style={{ ...styles.tableHead, gridTemplateColumns: '100px 1fr 1fr 90px 136px' }}>
             <span>Date</span><span>Category</span><span>Note</span>
             <span style={{ textAlign: 'right' }}>Amount</span><span />
           </div>
           {filtered.map(e => (
-            <div key={e.id} style={{ ...styles.tableRow, gridTemplateColumns: '100px 1fr 1fr 90px 80px' }} className="expense-table-row fade-in">
+            <div key={e.id} style={{ ...styles.tableRow, gridTemplateColumns: '100px 1fr 1fr 90px 136px' }} className="expense-table-row table-row-hover fade-in">
               <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{e.date}</span>
               <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -378,7 +391,8 @@ function ExpenseList({ expenses, onDelete }) {
               </span>
               <span style={{ color: 'var(--text-muted)', fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.note || '—'}</span>
               <span style={{ textAlign: 'right', color: 'var(--accent)', fontSize: 13 }}>{fmt(e.amount)}</span>
-              <span style={{ textAlign: 'right' }}>
+              <span style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                <button className="btn-ghost btn-compact" onClick={() => onEdit(e)}>Edit</button>
                 <button className="btn-danger" onClick={() => onDelete(e.id)}>Delete</button>
               </span>
             </div>
@@ -397,7 +411,23 @@ export default function App() {
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState('')
   const [tab,       setTab]       = useState('dashboard')
+  const [editingExpense, setEditingExpense] = useState(null)
   const [showModal, setShowModal] = useState(false)
+
+  const openAddModal = () => {
+    setEditingExpense(null)
+    setShowModal(true)
+  }
+
+  const openEditModal = (expense) => {
+    setEditingExpense(expense)
+    setShowModal(true)
+  }
+
+  const closeModal = () => {
+    setShowModal(false)
+    setEditingExpense(null)
+  }
 
   useEffect(() => {
     if (!supabase) {
@@ -443,6 +473,16 @@ export default function App() {
     setExpenses(prev => [data, ...prev])
   }
 
+  const updateExpense = async (id, form) => {
+    const { data, error } = await supabase.from('expenses')
+      .update(form)
+      .eq('id', id)
+      .select().single()
+    if (error) throw error
+    if (!data) throw new Error('Supabase did not return the updated expense.')
+    setExpenses(prev => prev.map(e => e.id === id ? data : e))
+  }
+
   const deleteExpense = async (id) => {
     const expense = expenses.find(e => e.id === id)
     const label = expense ? `${fmt(expense.amount)} on ${expense.date}` : 'this expense'
@@ -475,7 +515,7 @@ export default function App() {
             <List size={16} /> Expenses
           </button>
         </nav>
-        <button className="btn-primary" onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 16px', justifyContent: 'center' }}>
+        <button className="btn-primary" onClick={openAddModal} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 16px', justifyContent: 'center' }}>
           <Plus size={15} /> Add Expense
         </button>
         <div style={styles.sidebarFooter}>
@@ -489,7 +529,7 @@ export default function App() {
       <main className="app-main" style={styles.main}>
         <div style={styles.topbar}>
           <h1 style={styles.pageTitle}>{tab === 'dashboard' ? 'Dashboard' : 'All Expenses'}</h1>
-          <button className="btn-primary" onClick={() => setShowModal(true)} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button className="btn-primary" onClick={openAddModal} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Plus size={15} /> Add Expense
           </button>
         </div>
@@ -499,7 +539,7 @@ export default function App() {
             ? <div style={styles.empty}><p style={{ color: 'var(--text-muted)' }}>Loading expenses...</p></div>
             : tab === 'dashboard'
               ? <Dashboard expenses={expenses} />
-              : <ExpenseList expenses={expenses} onDelete={deleteExpense} />
+              : <ExpenseList expenses={expenses} onEdit={openEditModal} onDelete={deleteExpense} />
           }
         </div>
       </main>
@@ -508,7 +548,7 @@ export default function App() {
         <button style={{ ...styles.bottomNavItem, ...(tab === 'dashboard' ? styles.bottomNavActive : {}) }} onClick={() => setTab('dashboard')}>
           <LayoutDashboard size={20} /><span>Dashboard</span>
         </button>
-        <button style={styles.bottomNavAdd} onClick={() => setShowModal(true)}>
+        <button style={styles.bottomNavAdd} onClick={openAddModal}>
           <PlusCircle size={28} />
         </button>
         <button style={{ ...styles.bottomNavItem, ...(tab === 'expenses' ? styles.bottomNavActive : {}) }} onClick={() => setTab('expenses')}>
@@ -516,7 +556,13 @@ export default function App() {
         </button>
       </nav>
 
-      {showModal && <AddModal onClose={() => setShowModal(false)} onAdd={addExpense} />}
+      {showModal && (
+        <ExpenseModal
+          expense={editingExpense}
+          onClose={closeModal}
+          onSave={form => editingExpense ? updateExpense(editingExpense.id, form) : addExpense(form)}
+        />
+      )}
     </div>
   )
 }
